@@ -1,7 +1,7 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 10.00
-# Visual Studio 2008
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODBCTest", "ODBCTest.vcproj", "{76F41DD0-184B-46BC-A8CC-9109121B4786}"
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODBCTest", "ODBCTest.vcxproj", "{76F41DD0-184B-46BC-A8CC-9109121B4786}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
