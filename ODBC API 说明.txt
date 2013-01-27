@@ -1,0 +1,12 @@
+SQLNumResultCols 获取结果集中的列个数
+SQLDescribeCol ，SQLColAttribute 获取结果集中的列定义
+SQLRowCount returns the number of rows affected by an UPDATE, INSERT, or DELETE statement; 
+
+SQLCloseCursor Cursor用完要Close
+SQLCancelHandle  删除handle之前先调用SQLCancelHandle 
+
+stmt的关闭之前调用SQLCancel 
+
+
+SQLSetStmtAttr相关属性
+1.SQL_SOPT_SS_CURSOR_OPTIONS 是否禁用SQLGetData以获得快速游标

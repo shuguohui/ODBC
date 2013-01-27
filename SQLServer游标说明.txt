@@ -1,0 +1,41 @@
+如果ODBC Statement的游标属性为：（只进、只读、行集大小为 1）（默认值），那么将不会使用服务器游标。只要任意改变这三个默认值中的一个，就使用服务器游标
+如果使用Fast Forward-Only Cursors ，那么SQLGetData将不支持。
+因此在使用ODBC游标的时候，按照如下策略进行：
+默认使用Fast Forward-Only Cursors ，然后PreparedStatement后检测字段类型，发现如果有字段只能使用SQLGetData来获取数据
+， 则删除之前的Fast Forward-Only Cursors ，重新初始化游标为
+  SQL_ATTR_CURSOR_TYPE : SQL_CURSOR_FORWARD_ONLY
+  SQL_ATTR_CONCURRENCY : SQL_CONCUR_ROWVER
+  SQL_ATTR_ROW_ARRAY_SIZE : 1
+.如果用户指定的行集大小大于1.则进一步优化为
+  SQL_ATTR_CURSOR_TYPE : SQL_CURSOR_FORWARD_ONLY
+  SQL_ATTR_CONCURRENCY : SQL_CONCUR_READ_ONLY 
+  SQL_ATTR_ROW_ARRAY_SIZE : N
+
+
+对于模型，贴图以及渲染索引的获取，使用Fast Forward-Only Cursors
+SQLSetStmtAttr(hstmt, SQL_SOPT_SS_CURSOR_OPTIONS, (SQLPOINTER)SQL_CO_FFO_AF , SQL_IS_INTEGER);//自动提取以提升性能
+SQLSetStmtAttr(hstmt, SQL_ATTR_ROWS_FETCHED_PTR, &rowStatusArray, 0);
+SQLSetStmtAttr(hstmt, SQL_ATTR_ROW_STATUS_PTR, rowStatusArray, 0);
+SQLSetStmtAttr(hstmt, SQL_ATTR_ROW_ARRAY_SIZE  , (SQLPOINTER)preFetch ,SQL_IS_INTEGER);
+
+SQLExecute(hstmt);
+SQLCloseCursor(hstmt);//必须CloseCursor才能后续继续SQLExecute
+
+
+
+
+
+
+
+Fast Forward-Only Cursors使用相关注意事项
+
+Fast forward-only cursors are implicitly converted to other cursor types when:
+If the SELECT statement joins one or more tables with trigger tables (INSERTED/DELETED), the cursor is converted to a static cursor.
+
+If the SELECT statement references text, ntext, or image columns the cursor is converted to a dynamic cursor if the OLE DB Provider for SQL Server or the SQL Server ODBC driver are used.
+
+If a fast forward-only cursor is not read-only, it is converted to a dynamic cursor.
+
+If the SELECT statement is a distributed query that references one or more remote tables on linked servers, the cursor is converted to a keyset-driven cursor.
+
+If the SELECT statement references text, ntext, or image columns and a TOP clause, the cursor is converte

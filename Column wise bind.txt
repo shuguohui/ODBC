@@ -1,0 +1,152 @@
+#define DESC_LEN 51
+#define ARRAY_SIZE 10
+
+SQLCHAR *      Statement = "INSERT INTO Parts (PartID, Description,  Price) "
+                                                "VALUES (?, ?, ?)";
+SQLUINTEGER    PartIDArray[ARRAY_SIZE];
+SQLCHAR        DescArray[ARRAY_SIZE][DESC_LEN];
+SQLREAL        PriceArray[ARRAY_SIZE];
+SQLINTEGER     PartIDIndArray[ARRAY_SIZE], DescLenOrIndArray[ARRAY_SIZE],
+               PriceIndArray[ARRAY_SIZE];
+SQLUSMALLINT   i, ParamStatusArray[ARRAY_SIZE];
+SQLULEN ParamsProcessed;
+
+memset(DescLenOrIndArray, 0, sizeof(DescLenOrIndArray);
+memset(PartIDIndArray, 0, sizeof(PartIDIndArray);
+memset(PriceIndArray, 0, sizeof(PriceIndArray);
+
+// Set the SQL_ATTR_PARAM_BIND_TYPE statement attribute to use
+// column-wise binding.
+SQLSetStmtAttr(hstmt, SQL_ATTR_PARAM_BIND_TYPE, SQL_PARAM_BIND_BY_COLUMN, 0);
+
+// Specify the number of elements in each parameter array.
+SQLSetStmtAttr(hstmt, SQL_ATTR_PARAMSET_SIZE, ARRAY_SIZE, 0);
+
+// Specify an array in which to return the status of each set of
+// parameters.
+SQLSetStmtAttr(hstmt, SQL_ATTR_PARAM_STATUS_PTR, ParamStatusArray, 0);
+
+// Specify an SQLUINTEGER value in which to return the number of sets of
+// parameters processed.
+SQLSetStmtAttr(hstmt, SQL_ATTR_PARAMS_PROCESSED_PTR, &ParamsProcessed, 0);
+
+// Bind the parameters in column-wise fashion.
+SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_ULONG, SQL_INTEGER, 5, 0,
+                  PartIDArray, 0, PartIDIndArray);
+SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, DESC_LEN - 1, 0,
+                  DescArray, DESC_LEN, DescLenOrIndArray);
+SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_FLOAT, SQL_REAL, 7, 0,
+                  PriceArray, 0, PriceIndArray);
+
+// Set part ID, description, and price.
+for (i = 0; i < ARRAY_SIZE; i++) {
+   GetNewValues(&PartIDArray[i], DescArray[i], &PriceArray[i]);
+   PartIDIndArray[i] = 0;
+   DescLenOrIndArray[i] = SQL_NTS;
+   PriceIndArray[i] = 0;
+}
+
+// Execute the statement.
+SQLExecDirect(hstmt, Statement, SQL_NTS);
+
+// Check to see which sets of parameters were processed successfully.
+for (i = 0; i < ParamsProcessed; i++) {
+   printf("Parameter Set  Status\n");
+   printf("-------------  -------------\n");
+   switch (ParamStatusArray[i]) {
+      case SQL_PARAM_SUCCESS:
+      case SQL_PARAM_SUCCESS_WITH_INFO:
+         printf("%13d  Success\n", i);
+         break;
+
+      case SQL_PARAM_ERROR:
+         printf("%13d  Error\n", i);
+         break;
+
+      case SQL_PARAM_UNUSED:
+         printf("%13d  Not processed\n", i);
+         break;
+
+      case SQL_PARAM_DIAG_UNAVAILABLE:
+         printf("%13d  Unknown\n", i);
+         break;
+
+   }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#define ROW_ARRAY_SIZE 10
+
+SQLUINTEGER    OrderIDArray[ROW_ARRAY_SIZE], NumRowsFetched;
+SQLCHAR        SalesPersonArray[ROW_ARRAY_SIZE][11],
+               StatusArray[ROW_ARRAY_SIZE][7];
+SQLINTEGER     OrderIDIndArray[ROW_ARRAY_SIZE],
+               SalesPersonLenOrIndArray[ROW_ARRAY_SIZE],
+               StatusLenOrIndArray[ROW_ARRAY_SIZE];
+SQLUSMALLINT   RowStatusArray[ROW_ARRAY_SIZE], i;
+SQLRETURN      rc;
+SQLHSTMT       hstmt;
+
+// Set the SQL_ATTR_ROW_BIND_TYPE statement attribute to use
+// column-wise binding. Declare the rowset size with the
+// SQL_ATTR_ROW_ARRAY_SIZE statement attribute. Set the
+// SQL_ATTR_ROW_STATUS_PTR statement attribute to point to the
+// row status array. Set the SQL_ATTR_ROWS_FETCHED_PTR statement
+// attribute to point to cRowsFetched.
+SQLSetStmtAttr(hstmt, SQL_ATTR_ROW_BIND_TYPE, SQL_BIND_BY_COLUMN, 0);
+SQLSetStmtAttr(hstmt, SQL_ATTR_ROW_ARRAY_SIZE, ROW_ARRAY_SIZE, 0);
+SQLSetStmtAttr(hstmt, SQL_ATTR_ROW_STATUS_PTR, RowStatusArray, 0);
+SQLSetStmtAttr(hstmt, SQL_ATTR_ROWS_FETCHED_PTR, &NumRowsFetched, 0);
+
+// Bind arrays to the OrderID, SalesPerson, and Status columns.
+SQLBindCol(hstmt, 1, SQL_C_ULONG, OrderIDArray, 0, OrderIDIndArray);
+SQLBindCol(hstmt, 2, SQL_C_CHAR, SalesPersonArray, sizeof(SalesPersonArray[0]),
+            SalesPersonLenOrIndArray);
+SQLBindCol(hstmt, 3, SQL_C_CHAR, StatusArray, sizeof(StatusArray[0]),
+            StatusLenOrIndArray);
+
+// Execute a statement to retrieve rows from the Orders table.
+SQLExecDirect(hstmt, "SELECT OrderID, SalesPerson, Status FROM Orders", SQL_NTS);
+
+// Fetch up to the rowset size number of rows at a time. Print the actual
+// number of rows fetched; this number is returned in NumRowsFetched.
+// Check the row status array to print only those rows successfully
+// fetched. Code to check if rc equals SQL_SUCCESS_WITH_INFO or
+// SQL_ERROR not shown.
+while ((rc = SQLFetchScroll(hstmt,SQL_FETCH_NEXT,0)) != SQL_NO_DATA) {
+   for (i = 0; i < NumRowsFetched; i++) {
+      if ((RowStatusArray[i] == SQL_ROW_SUCCESS) ||
+            (RowStatusArray[i] == SQL_ROW_SUCCESS_WITH_INFO)) {
+         if (OrderIDIndArray[i] == SQL_NULL_DATA)
+            printf(" NULL      ");
+         else
+            printf("%d\t", OrderIDArray[i]);
+         if (SalesPersonLenOrIndArray[i] == SQL_NULL_DATA)
+            printf(" NULL      ");
+         else
+            printf("%s\t", SalesPersonArray[i]);
+         if (StatusLenOrIndArray[i] == SQL_NULL_DATA)
+            printf(" NULL\n");
+         else
+            printf("%s\n", StatusArray[i]);
+      }
+   }
+}
+
+// Close the cursor.
+SQLCloseCursor(hstmt);
