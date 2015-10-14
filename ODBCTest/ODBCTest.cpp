@@ -8,11 +8,25 @@
 #  include <windows.h>
 #endif
 #include <string>
+#include <sstream>
 #include <sql.h>
 #include <sqlext.h>
 #include <sqlncli.h>
 #define DESC_LEN 51
 #define ARRAY_SIZE 1000
+
+void TestBCP(SQLHANDLE hDbConn)
+{
+   int idCompany1,idCompany2;
+   int nErr = bcp_init(hDbConn, "[dbo].t1", NULL, NULL, DB_IN);
+   nErr = bcp_bind(hDbConn, (LPCBYTE) &idCompany1, 0, sizeof(idCompany1), NULL, 0,SQLINT4, 1);
+
+   nErr = bcp_init(hDbConn, "[dbo].t2", NULL, NULL, DB_IN);
+   nErr = bcp_bind(hDbConn, (LPCBYTE) &idCompany2, 0, sizeof(idCompany2), NULL, 0,SQLINT4, 1);
+ 
+   nErr = bcp_sendrow(hDbConn);
+   nErr = bcp_done(hDbConn);
+}
 
 void TestColumnWiseBindParams(SQLHANDLE hDbConn)
 {
@@ -217,7 +231,7 @@ void TestBulkInsert(SQLHANDLE hDbConn)
 	SQLHSTMT hstmt,hstmt2; //Óï¾ä¾ä±ú
 	SQLRETURN sr = SQLAllocHandle(SQL_HANDLE_STMT, hDbConn, &hstmt); 
 	//sr = SQLAllocHandle(SQL_HANDLE_STMT, hDbConn, &hstmt2); 
-	int nBatch = 1024;
+	int nBatch = 512;
 	int nRowSize = sizeof(int) + sizeof(wchar_t) * 256 + sizeof(wchar_t) * 256 + sizeof(int) + 4 * sizeof(SQLINTEGER);
 	SQLCHAR *      Statement = (SQLCHAR*)("INSERT INTO [dbo].Table_1 (id,name,city,age) VALUES (?,?,?,?)");
 	SQLCHAR *      Statement2 = (SQLCHAR*)("INSERT INTO [dbo].Table_2 (id,name,city) VALUES (?,?,?)");
@@ -271,7 +285,7 @@ void TestBulkInsert(SQLHANDLE hDbConn)
 	//}
 	
 
-	const wchar_t* pszName = L"helloworldhelloworldhelloworldhelloworldhelloworldhelloworldhelloworldhelloworld";
+	const wchar_t* pszName = L"helloworld";
 	//char binary[10240] = {0};
 	int nCount = 274;
 	int id;
@@ -318,6 +332,212 @@ void TestBulkInsert(SQLHANDLE hDbConn)
 		}
 		sr = SQLExecute(hstmt);
 		//sr = SQLExecute(hstmt2);
+		/*SQLCHAR pStatus[100],pMsg[100];
+		SQLSMALLINT SQLmsglen;
+		SQLCHAR error[200]={0};
+		SQLINTEGER SQLerr;
+		sr = SQLGetDiagRec(SQL_HANDLE_STMT,hstmt,1,(SQLCHAR*)pStatus,&SQLerr,(SQLCHAR*)pMsg,100,&SQLmsglen);
+		sr = 0;*/
+	}	
+	SQLEndTran(SQL_HANDLE_DBC, hDbConn, SQL_COMMIT);
+	sr = SQLSetConnectAttr(hDbConn, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER)SQL_AUTOCOMMIT_ON, SQL_IS_INTEGER);
+	long end = GetTickCount();
+	std::cout << "total" << index <<std::endl;
+	std::cout << (end - begin) << "ms" <<std::endl;
+	std::cout << "ave" <<(end - begin) * 1.0/(nCount*nBatch) <<std::endl;;
+	std::cout << "ave" <<(nCount*nBatch)  * 1000.0 / (end - begin) <<std::endl;;
+}
+
+void TestBulkInsert2(SQLHANDLE hDbConn)
+{
+	SQLHSTMT hstmt; //Óï¾ä¾ä±ú
+	SQLRETURN sr = SQLAllocHandle(SQL_HANDLE_STMT, hDbConn, &hstmt); 
+	//sr = SQLAllocHandle(SQL_HANDLE_STMT, hDbConn, &hstmt2); 
+	int nBatch = 512;
+	int nRowSize = sizeof(int) + sizeof(wchar_t) * 256 + sizeof(wchar_t) * 256 + sizeof(int) + 4 * sizeof(SQLINTEGER);
+	nRowSize = nRowSize * nBatch;
+	std::stringstream stream;
+	stream << "INSERT INTO [dbo].Table_1 (id,name,city,age) VALUES (?,?,?,?)";
+	for(int i = 1;i < nBatch;i++)
+		stream << ",(?,?,?,?)";
+	std::string pszSQL = stream.str();
+	SQLCHAR *      Statement = (SQLCHAR*)pszSQL.c_str();
+	int _nBatch = 1;
+	char* pBuffer = (char*)malloc(nRowSize);
+	SQLUSMALLINT* ParamStatusArray = new SQLUSMALLINT[nBatch];
+	SQLULEN ParamsProcessed;
+
+	long begin = GetTickCount();
+	sr = SQLSetConnectAttr(hDbConn, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER)SQL_AUTOCOMMIT_OFF, SQL_IS_INTEGER);
+
+	sr = SQLSetStmtAttr(hstmt, SQL_ATTR_PARAM_BIND_TYPE, (SQLPOINTER)nRowSize, SQL_IS_INTEGER);
+	
+	sr = SQLSetStmtAttr(hstmt, SQL_ATTR_PARAMSET_SIZE, (SQLPOINTER)_nBatch, SQL_IS_INTEGER);
+	sr = SQLSetStmtAttr(hstmt, SQL_ATTR_PARAM_STATUS_PTR, ParamStatusArray, SQL_IS_INTEGER);
+	sr = SQLSetStmtAttr(hstmt, SQL_ATTR_PARAMS_PROCESSED_PTR, &ParamsProcessed, SQL_IS_INTEGER);
+
+	sr = SQLPrepare(hstmt,Statement,SQL_NTS);
+	{
+		int nPos = 0;
+		for(int i = 0;i < nBatch;i++)
+		{
+			SQLBindParameter(hstmt, 1 + i * 4, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 10, 0,pBuffer + nPos, 0, (SQLINTEGER *)(pBuffer + nPos + sizeof(int)) );
+			nPos += (sizeof(int) + sizeof(SQLINTEGER));
+			SQLBindParameter(hstmt, 2  + i * 4, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WVARCHAR, 255, 0,pBuffer + nPos, 0, (SQLINTEGER *)(pBuffer + nPos + sizeof(wchar_t) * 256 ));
+			nPos += (sizeof(wchar_t) * 256 + sizeof(SQLINTEGER));
+			SQLBindParameter(hstmt, 3  + i * 4, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WVARCHAR,255, 0,pBuffer + nPos, 0, (SQLINTEGER *)(pBuffer + nPos + sizeof(wchar_t) * 256 ));
+			nPos += (sizeof(wchar_t) * 256 + sizeof(SQLINTEGER));
+			SQLBindParameter(hstmt, 4  + i * 4, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 10, 0,pBuffer + nPos, 0, (SQLINTEGER *)(pBuffer + nPos + sizeof(int)) );
+			nPos += (sizeof(int) + sizeof(SQLINTEGER));
+		}
+	}
+	
+
+	const wchar_t* pszName = L"helloworld";
+	int nCount = 274;
+	int id;
+	int index = 0;
+	for (int k = 0;k < nCount;k++)
+	{
+		int nPos = 0;
+		SQLINTEGER    ind = 0;
+		for (int i = 0; i < nBatch; i++) 
+		{
+			//id
+			id = k * nBatch + i;
+			memcpy(pBuffer + nPos,&id,sizeof(id));
+			nPos += sizeof(id);
+			memcpy(pBuffer + nPos,&ind,sizeof(ind));
+			nPos += sizeof(ind);
+
+			//name
+			memcpy(pBuffer + nPos,pszName,sizeof(wchar_t) * wcslen(pszName));
+			pBuffer[nPos + sizeof(wchar_t) * wcslen(pszName)] = 0;
+			pBuffer[nPos + sizeof(wchar_t) * wcslen(pszName) + 1] = 0;
+			nPos += sizeof(wchar_t) * 256;
+			ind = sizeof(wchar_t) * wcslen(pszName);
+			memcpy(pBuffer + nPos,&ind,sizeof(ind));
+			nPos += sizeof(ind);
+			
+			//city
+			memcpy(pBuffer + nPos,pszName,sizeof(wchar_t) * wcslen(pszName));
+			pBuffer[nPos + sizeof(wchar_t) * wcslen(pszName)] = 0;
+			pBuffer[nPos + sizeof(wchar_t) * wcslen(pszName) + 1] = 0;
+			nPos += sizeof(wchar_t) * 256;
+			ind = sizeof(wchar_t) * wcslen(pszName);
+			memcpy(pBuffer + nPos,&ind,sizeof(ind));
+			nPos += sizeof(ind);
+
+			//age
+			memcpy(pBuffer + nPos,&id,sizeof(id));
+			nPos += sizeof(id);
+			memcpy(pBuffer + nPos,&ind,sizeof(ind));
+			nPos += sizeof(ind);
+
+			//assert((nPos % nRowSize) == 0);
+			index++;
+		}
+		sr = SQLExecute(hstmt);
+	}	
+	SQLEndTran(SQL_HANDLE_DBC, hDbConn, SQL_COMMIT);
+	sr = SQLSetConnectAttr(hDbConn, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER)SQL_AUTOCOMMIT_ON, SQL_IS_INTEGER);
+	long end = GetTickCount();
+	std::cout << "total" << index <<std::endl;
+	std::cout << (end - begin) << "ms" <<std::endl;
+	std::cout << "ave" <<(end - begin) * 1.0/(nCount*nBatch) <<std::endl;;
+	std::cout << "ave" <<(nCount*nBatch)  * 1000.0 / (end - begin) <<std::endl;;
+}
+
+void TestBulkInsert3(SQLHANDLE hDbConn)
+{
+	SQLHSTMT hstmt; //Óï¾ä¾ä±ú
+	SQLRETURN sr = SQLAllocHandle(SQL_HANDLE_STMT, hDbConn, &hstmt); 
+	//sr = SQLAllocHandle(SQL_HANDLE_STMT, hDbConn, &hstmt2); 
+	int nBatch = 512;
+	int nRowSize = sizeof(int) + sizeof(wchar_t) * 256 + sizeof(wchar_t) * 256 + sizeof(int) + 4 * sizeof(SQLINTEGER);
+	nRowSize = nRowSize * nBatch;
+	std::stringstream stream;
+	stream << "INSERT INTO [dbo].Table_1 (id,name,city,age) select ?,?,?,?";
+	for(int i = 1;i < nBatch;i++)
+		stream << " union all select(?,?,?,?)";
+	std::string pszSQL = stream.str();
+	SQLCHAR *      Statement = (SQLCHAR*)pszSQL.c_str();
+	int _nBatch = 1;
+	char* pBuffer = (char*)malloc(nRowSize);
+	SQLUSMALLINT* ParamStatusArray = new SQLUSMALLINT[nBatch];
+	SQLULEN ParamsProcessed;
+
+	long begin = GetTickCount();
+	sr = SQLSetConnectAttr(hDbConn, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER)SQL_AUTOCOMMIT_OFF, SQL_IS_INTEGER);
+
+	sr = SQLSetStmtAttr(hstmt, SQL_ATTR_PARAM_BIND_TYPE, (SQLPOINTER)nRowSize, SQL_IS_INTEGER);
+	
+	sr = SQLSetStmtAttr(hstmt, SQL_ATTR_PARAMSET_SIZE, (SQLPOINTER)_nBatch, SQL_IS_INTEGER);
+	sr = SQLSetStmtAttr(hstmt, SQL_ATTR_PARAM_STATUS_PTR, ParamStatusArray, SQL_IS_INTEGER);
+	sr = SQLSetStmtAttr(hstmt, SQL_ATTR_PARAMS_PROCESSED_PTR, &ParamsProcessed, SQL_IS_INTEGER);
+
+	sr = SQLPrepare(hstmt,Statement,SQL_NTS);
+	{
+		int nPos = 0;
+		for(int i = 0;i < nBatch;i++)
+		{
+			SQLBindParameter(hstmt, 1 + i * 4, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 10, 0,pBuffer + nPos, 0, (SQLINTEGER *)(pBuffer + nPos + sizeof(int)) );
+			nPos += (sizeof(int) + sizeof(SQLINTEGER));
+			SQLBindParameter(hstmt, 2  + i * 4, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WVARCHAR, 255, 0,pBuffer + nPos, 0, (SQLINTEGER *)(pBuffer + nPos + sizeof(wchar_t) * 256 ));
+			nPos += (sizeof(wchar_t) * 256 + sizeof(SQLINTEGER));
+			SQLBindParameter(hstmt, 3  + i * 4, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WVARCHAR,255, 0,pBuffer + nPos, 0, (SQLINTEGER *)(pBuffer + nPos + sizeof(wchar_t) * 256 ));
+			nPos += (sizeof(wchar_t) * 256 + sizeof(SQLINTEGER));
+			SQLBindParameter(hstmt, 4  + i * 4, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 10, 0,pBuffer + nPos, 0, (SQLINTEGER *)(pBuffer + nPos + sizeof(int)) );
+			nPos += (sizeof(int) + sizeof(SQLINTEGER));
+		}
+	}
+	
+
+	const wchar_t* pszName = L"helloworld";
+	int nCount = 274;
+	int id;
+	int index = 0;
+	for (int k = 0;k < nCount;k++)
+	{
+		int nPos = 0;
+		SQLINTEGER    ind = 0;
+		for (int i = 0; i < nBatch; i++) 
+		{
+			//id
+			id = k * nBatch + i;
+			memcpy(pBuffer + nPos,&id,sizeof(id));
+			nPos += sizeof(id);
+			memcpy(pBuffer + nPos,&ind,sizeof(ind));
+			nPos += sizeof(ind);
+
+			//name
+			memcpy(pBuffer + nPos,pszName,sizeof(wchar_t) * wcslen(pszName));
+			pBuffer[nPos + sizeof(wchar_t) * wcslen(pszName)] = 0;
+			pBuffer[nPos + sizeof(wchar_t) * wcslen(pszName) + 1] = 0;
+			nPos += sizeof(wchar_t) * 256;
+			ind = sizeof(wchar_t) * wcslen(pszName);
+			memcpy(pBuffer + nPos,&ind,sizeof(ind));
+			nPos += sizeof(ind);
+			
+			//city
+			memcpy(pBuffer + nPos,pszName,sizeof(wchar_t) * wcslen(pszName));
+			pBuffer[nPos + sizeof(wchar_t) * wcslen(pszName)] = 0;
+			pBuffer[nPos + sizeof(wchar_t) * wcslen(pszName) + 1] = 0;
+			nPos += sizeof(wchar_t) * 256;
+			ind = sizeof(wchar_t) * wcslen(pszName);
+			memcpy(pBuffer + nPos,&ind,sizeof(ind));
+			nPos += sizeof(ind);
+
+			//age
+			memcpy(pBuffer + nPos,&id,sizeof(id));
+			nPos += sizeof(id);
+			memcpy(pBuffer + nPos,&ind,sizeof(ind));
+			nPos += sizeof(ind);
+
+			//assert((nPos % nRowSize) == 0);
+			index++;
+		}
+		sr = SQLExecute(hstmt);
 		SQLCHAR pStatus[100],pMsg[100];
 		SQLSMALLINT SQLmsglen;
 		SQLCHAR error[200]={0};
@@ -464,11 +684,13 @@ int _tmain(int argc, _TCHAR* argv[])
 	sr = SQLAllocHandle(SQL_HANDLE_DBC, hOdbcEnv, &hDbConn); 
 	sr=SQLSetConnectAttr(hDbConn,SQL_ATTR_LOGIN_TIMEOUT,(void *) 5,0);
 	sr=SQLSetConnectAttr(hDbConn, SQL_COPT_SS_MARS_ENABLED, (SQLPOINTER)SQL_MARS_ENABLED_YES, SQL_IS_UINTEGER);
+	sr=SQLSetConnectAttr(hDbConn, SQL_COPT_SS_BCP, (void *)SQL_BCP_ON, SQL_IS_INTEGER);
+
 	sr = SQLDriverConnect(hDbConn,NULL,(SQLCHAR*)connstr.c_str(),SQL_NTS, szOutConn, 1024, &OutConnStrLen, SQL_DRIVER_NOPROMPT);
 	if (!SQL_SUCCEEDED(sr)) //Á¬½ÓÊ§°ÜÊ±·µ»Ø´íÎóÖµ 
 		return -1;
-
-	TestBulkInsert(hDbConn);
+	TestBulkInsert3(hDbConn);
+	getchar();
 	return 0;
 	TestColumnInfos(hDbConn);
 
